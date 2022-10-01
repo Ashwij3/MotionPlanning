@@ -2,12 +2,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import animation
 
-class DHParam:
+class DHParam(object):
     def __init__(self, theta, r, d, alpha):
         self.theta_ = theta  # Unit [radian]
         self.r_ = r          # Unit [metres]
         self.d_ = d          # Unit [metres]
         self.alpha_ = alpha  # Unit [radian]
+
+    def joints(self):
+        return len(self.theta_)
 
 class Robot(object):
     def __init__(self,RobotName:str, DHparam:DHParam, JointLimits):
@@ -15,23 +18,20 @@ class Robot(object):
         self.DHparam_ = DHparam
         self.JointLimits_ = JointLimits 
         self.T_ = np.matrix(np.identity(4))
-        self.EEPosition_ = np.zeros(2)
-        self.theta_ = np.zeros(2)
+        self.EEPosition_ = np.zeros(3)
+        self.theta_ = np.zeros(DHparam.joints())
         self.defaultcfg = 0
-        self.trajectory_ = [[], []]
-        self.plt   = plt
-        self.figure = self.plt.figure(num=None, figsize=(25, 17.5), dpi=80, facecolor='w', edgecolor='k')
+        self.trajectory_ = [[], [], []]
+        self.figure = plt.figure(num=None, figsize=(25, 17.5), dpi=80, facecolor='w', edgecolor='k')
 
-        self.plt.plot(0.0, 0.0, marker = 'o', ms = 25, mfc = [0,0,0], markeredgecolor = [0,0,0], mew = 5) #joint 1
-        line1, = self.plt.plot([],[],'k-',linewidth=10) #link 1
-        line2, = self.plt.plot([],[],'k-',linewidth=10) #link 2     
-        line3, = self.plt.plot([],[], marker = 'o', ms = 15, mfc = [0.7, 0.0, 1, 1], markeredgecolor = [0,0,0], mew = 5) #joint 2
-        line4, = self.plt.plot([],[], marker = 'o', ms = 15, mfc = [0,0.75,1, 1], markeredgecolor = [0,0,0], mew = 5) #End Effector
+        plt.plot(0.0, 0.0, marker = 'o', ms = 25, mfc = [0,0,0], markeredgecolor = [0,0,0], mew = 5) #joint 1
+        line1, = plt.plot([],[],'k-',linewidth=10) #link 1
+        line2, = plt.plot([],[],'k-',linewidth=10) #link 2     
+        line3, = plt.plot([],[], marker = 'o', ms = 15, mfc = [0.7, 0.0, 1, 1], markeredgecolor = [0,0,0], mew = 5) #joint 2
+        line4, = plt.plot([],[], marker = 'o', ms = 15, mfc = [0,0.75,1, 1], markeredgecolor = [0,0,0], mew = 5) #End Effector
         self.line_ = [line1, line2, line3, line4]
     
         self.__animation_dMat = np.zeros((1, 4), dtype=np.float)
-
-
 
     
     def cal_DH2Fk(self,JointIndex:int):
@@ -62,15 +62,11 @@ class Robot(object):
     def extractTranslation(self):
         self.EEPosition_[0] = self.T_[0, 3]
         self.EEPosition_[1] = self.T_[1, 3]
+        self.EEPosition_[2] = self.T_[2, 3]
         
-
     
     def FwdKin(self,JointValues):
-        self.thetaTarget_ = np.zeros(2)
-        self.thetaTarget_[0] = JointValues[0]
-        self.thetaTarget_[1] = JointValues[1]
-
-        self.DHparam_.theta_ = self.thetaTarget_
+        self.DHparam_.theta_ = JointValues
 
         for i in range(len(self.DHparam_.theta_)):
                 self.T_ =  self.T_ * self.cal_DH2Fk(i)
@@ -80,26 +76,26 @@ class Robot(object):
 
     
     def InvKin(self,TargetLoc,clf=0):
-        self.EETarget_ = np.zeros(2)
-        self.EETarget_[0] = TargetLoc[0]
-        self.EETarget_[1] = TargetLoc[1]
-        
+        self.EETarget_ = TargetLoc
 
-        COS_beta_num = self.DHparam_.r_[0]**2 - self.DHparam_.r_[1]**2 + self.EETarget_[0]**2 + self.EETarget_[1]**2 
-        COS_beta_den = 2 * self.DHparam_.r_[0] * np.sqrt(self.EETarget_[0]**2 + self.EETarget_[1]**2)
+        # initial twist is based on x/z 
+        self.theta_[0] = np.arctan2(self.EETarget_[0], self.EETarget_[2]);
+
+        COS_beta_num = self.DHparam_.r_[1]**2 - self.DHparam_.r_[2]**2 + self.EETarget_[0]**2 + self.EETarget_[1]**2 
+        COS_beta_den = 2 * self.DHparam_.r_[1] * np.sqrt(self.EETarget_[0]**2 + self.EETarget_[1]**2)
         
         if clf == 0:
-                 self.theta_[0] = np.arctan2(self.EETarget_[1], self.EETarget_[0]) - np.arccos(COS_beta_num/COS_beta_den)
+                 self.theta_[1] = np.arctan2(self.EETarget_[1], self.EETarget_[0]) - np.arccos(COS_beta_num/COS_beta_den)
         elif clf == 1:
-                 self.theta_[0] = np.arctan2(self.EETarget_[1], self.EETarget_[0]) + np.arccos(COS_beta_num/COS_beta_den)
+                 self.theta_[1] = np.arctan2(self.EETarget_[1], self.EETarget_[0]) + np.arccos(COS_beta_num/COS_beta_den)
         
-        COS_alpha_num = self.DHparam_.r_[0]**2 + self.DHparam_.r_[1]**2 - self.EETarget_[0]**2 - self.EETarget_[1]**2 
-        COS_alpha_den = 2 * self.DHparam_.r_[0] * self.DHparam_.r_[1]
+        COS_alpha_num = self.DHparam_.r_[1]**2 + self.DHparam_.r_[2]**2 - self.EETarget_[0]**2 - self.EETarget_[1]**2 
+        COS_alpha_den = 2 * self.DHparam_.r_[1] * self.DHparam_.r_[2]
         
         if clf == 0:
-                 self.theta_[1] = np.pi - np.arccos(COS_alpha_num/COS_alpha_den)
+                 self.theta_[2] = np.pi - np.arccos(COS_alpha_num/COS_alpha_den)
         elif clf == 1:
-                 self.theta_[1] = np.arccos(COS_alpha_num/COS_alpha_den) - np.pi
+                 self.theta_[2] = np.arccos(COS_alpha_num/COS_alpha_den) - np.pi
         
         self.FwdKin(self.theta_)
 
@@ -108,25 +104,29 @@ class Robot(object):
         if TrajectoryType == 'joint':
             x = []
             y = []
+            z = []
             self.InvKin(start,self.defaultcfg)
             start_theta  = self.DHparam_.theta_
 
             self.InvKin(Target,self.defaultcfg)
             target_theta  = self.DHparam_.theta_
 
-            theta1_dt = np.linspace(start_theta[0], target_theta[0],steps)
-            theta2_dt = np.linspace(start_theta[1], target_theta[1],steps)
+            theta0_dt = np.linspace(start_theta[0], target_theta[0],steps)
+            theta1_dt = np.linspace(start_theta[1], target_theta[1],steps)
+            theta2_dt = np.linspace(start_theta[2], target_theta[2],steps)
 
-            for i in range(len(theta1_dt)):
-                    self.FwdKin([theta1_dt[i], theta2_dt[i]])
+            for i in range(len(theta0_dt)):
+                    self.FwdKin([theta0_dt[i], theta1_dt[i], theta2_dt[i]])
                     x.append(self.EEPosition_[0])
                     y.append(self.EEPosition_[1])
+                    z.append(self.EEPosition_[2])
         if TrajectoryType == 'linear':
             time = np.linspace(0.0, 1.0, steps)
             x = (1 - time) * start[0] + time * Target[0]
-            y = (1 - time) * start[1] + time * Target[1]
+            y = (1 - time) * start[1] + time * Target[1] 
+            z = (1 - time) * start[2] + time * Target[2] 
         
-        return [x, y]
+        return [x, y, z]
 
     def CheckTrajectory(self):
         pass
@@ -135,9 +135,9 @@ class Robot(object):
         self.__animation_dMat = np.zeros((len(self.trajectory_[0]), 4), dtype=np.float) 
         
         for i in range(len(self.trajectory_[0])):
-            self.InvKin([self.trajectory_[0][i], self.trajectory_[1][i]],self.defaultcfg)
-            self.__animation_dMat[i][0] = self.DHparam_.r_[0]*np.cos(self.DHparam_.theta_[0])
-            self.__animation_dMat[i][1] = self.DHparam_.r_[0]*np.sin(self.DHparam_.theta_[0])
+            self.InvKin([self.trajectory_[0][i], self.trajectory_[1][i], self.trajectory_[2][i]] ,self.defaultcfg)
+            self.__animation_dMat[i][0] = self.DHparam_.r_[1]*np.cos(self.DHparam_.theta_[1])
+            self.__animation_dMat[i][1] = self.DHparam_.r_[1]*np.sin(self.DHparam_.theta_[1])
             self.__animation_dMat[i][2] = self.EEPosition_[0]
             self.__animation_dMat[i][3] = self.EEPosition_[1]
 
@@ -163,42 +163,43 @@ class Robot(object):
     def display_environment(self, work_envelope = [False, 0]):
         if len(self.trajectory_[0]) > 0:
             
-            self.plt.plot(self.trajectory_[0][0], self.trajectory_[1][0], label=r'Initial Position: $p_{(x, y)}$', marker = 'o', ms = 30, mfc = [0,0.5,1], markeredgecolor = [0,0,0], mew = 5)
-            self.plt.plot(self.trajectory_[0][len(self.trajectory_[0]) - 1], self.trajectory_[1][len(self.trajectory_[1]) - 1], label=r'Target Position: $p_{(x, y)}$', marker = 'o', ms = 30, mfc = [0,1,0], markeredgecolor = [0,0,0], mew = 5)
+            plt.plot(self.trajectory_[0][0], self.trajectory_[1][0], label=r'Initial Position: $p_{(x, y)}$', marker = 'o', ms = 30, mfc = [0,0.5,1], markeredgecolor = [0,0,0], mew = 5)
+            plt.plot(self.trajectory_[0][len(self.trajectory_[0]) - 1], self.trajectory_[1][len(self.trajectory_[1]) - 1], label=r'Target Position: $p_{(x, y)}$', marker = 'o', ms = 30, mfc = [0,1,0], markeredgecolor = [0,0,0], mew = 5)
 
             self.p = [self.trajectory_[0][len(self.trajectory_[0]) - 1], self.trajectory_[1][len(self.trajectory_[1]) - 1]]
             # self.InvKin(self.p,self.defaultcfg)
        
     
-        self.plt.axis([(-1)*(self.DHparam_.r_[0] + self.DHparam_.r_[1]) - 0.2, (1)*(self.DHparam_.r_[0] + self.DHparam_.r_[1]) + 0.2, (-1)*(self.DHparam_.r_[0] + self.DHparam_.r_[1]) - 0.2, (1)*(self.DHparam_.r_[0] + self.DHparam_.r_[1]) + 0.2])
-        self.plt.grid()
-        self.plt.xlabel('x position [m]', fontsize = 20, fontweight ='normal')
-        self.plt.ylabel('y position [m]', fontsize = 20, fontweight ='normal')
-        self.plt.title(self.RobotName_, fontsize = 50, fontweight ='normal')
-        self.plt.legend(loc=0,fontsize=20)
+        plt.axis([(-1)*(self.DHparam_.r_[1] + self.DHparam_.r_[2]) - 0.2, (1)*(self.DHparam_.r_[1] + self.DHparam_.r_[2]) + 0.2, (-1)*(self.DHparam_.r_[1] + self.DHparam_.r_[2]) - 0.2, (1)*(self.DHparam_.r_[1] + self.DHparam_.r_[2]) + 0.2])
+        plt.grid()
+        plt.xlabel('x position [m]', fontsize = 20, fontweight ='normal')
+        plt.ylabel('y position [m]', fontsize = 20, fontweight ='normal')
+        plt.title(self.RobotName_, fontsize = 50, fontweight ='normal')
+        plt.legend(loc=0,fontsize=20)
 
 
 def main():
     JointLimits = [[-2.44346, 2.44346],[-2.61799, 2.61799]]
     arm_length = [0.3, 0.25]
     
-    inittheta = [0.0,0.0]
-    r       = [arm_length[0], arm_length[1]]
-    d       = [0.0, 0.0]
-    alpha   = [0.0, 0.0]
+    inittheta = [0.0, 0.0, 0.0]
+    r       = [0, arm_length[0], arm_length[1]]
+    d       = [0.0, 0.0, 0.0]
+    alpha   = [0.0, 0.0, 0.0]
 
     RRBOT = Robot("RRRobot",DHParam(inittheta,r,d,alpha),JointLimits)
 
     RRBOT.defaultcfg = 1 # 0/1 for changing the configuration to reach a particular point
     TrajectoryType = "linear"
-    StartPoint = [0.50, 0.0]
-    TargetPoint = [0.10, 0.30]
+    StartPoint = [0.50, 0.0, 0.0]
+    TargetPoint = [0.10, 0.30, 0.0]
     steps = 25
 
-    x,y = RRBOT.TrajectoryGen(StartPoint,TargetPoint,TrajectoryType,steps)
+    x,y, z = RRBOT.TrajectoryGen(StartPoint,TargetPoint,TrajectoryType,steps)
     for j in range(steps):
         RRBOT.trajectory_[0].append(x[j])
         RRBOT.trajectory_[1].append(y[j])
+        RRBOT.trajectory_[2].append(z[j])
     RRBOT.display_environment([True, 1])
     animator = animation.FuncAnimation(RRBOT.figure, RRBOT.start_animation, init_func=RRBOT.InitAnimation, frames=len(RRBOT.trajectory_[0]), interval=2, blit=True, repeat=False)
     animator.save('test.mp4', fps=30, bitrate=1000)

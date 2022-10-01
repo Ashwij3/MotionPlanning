@@ -78,8 +78,7 @@ class Robot(object):
     def InvKin(self,TargetLoc,clf=0):
         self.EETarget_ = TargetLoc
 
-        # initial twist is based on x/z 
-        self.theta_[0] = np.arctan2(self.EETarget_[0], self.EETarget_[2]);
+        self.theta_[0] = np.arctan2(self.EETarget_[2], self.EETarget_[0]);
 
         COS_beta_num = self.DHparam_.r_[1]**2 - self.DHparam_.r_[2]**2 + self.EETarget_[0]**2 + self.EETarget_[1]**2 
         COS_beta_den = 2 * self.DHparam_.r_[1] * np.sqrt(self.EETarget_[0]**2 + self.EETarget_[1]**2)

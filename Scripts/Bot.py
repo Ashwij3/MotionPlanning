@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import animation
+from obstacle_map import ObstacleField
 
 class DHParam(object):
     def __init__(self, theta, r, d, alpha):
@@ -22,16 +23,27 @@ class Robot(object):
         self.theta_ = np.zeros(DHparam.joints())
         self.defaultcfg = 0
         self.trajectory_ = [[], [], []]
-        self.figure = plt.figure(num=None, figsize=(25, 17.5), dpi=80, facecolor='w', edgecolor='k')
+        
+        self.figure, (ax1, ax2) = plt.subplots(2)
+        self.figure.set_figheight(50)
+        self.figure.set_figwidth(35)
+        self.figure.set_dpi(100)
 
-        plt.plot(0.0, 0.0, marker = 'o', ms = 25, mfc = [0,0,0], markeredgecolor = [0,0,0], mew = 5) #joint 1
-        line1, = plt.plot([],[],'k-',linewidth=10) #link 1
-        line2, = plt.plot([],[],'k-',linewidth=10) #link 2     
-        line3, = plt.plot([],[], marker = 'o', ms = 15, mfc = [0.7, 0.0, 1, 1], markeredgecolor = [0,0,0], mew = 5) #joint 2
-        line4, = plt.plot([],[], marker = 'o', ms = 15, mfc = [0,0.75,1, 1], markeredgecolor = [0,0,0], mew = 5) #End Effector
-        self.line_ = [line1, line2, line3, line4]
-    
+        self.task_plot = ax1
+        self.config_plot = ax2
+
+        self.task_plot.plot(0.0, 0.0, marker = 'o', ms = 25, mfc = [0,0,0], markeredgecolor = [0,0,0], mew = 5) #joint 1
+        line1, = ax1.plot([],[],'k-',linewidth=10) #link 1
+        line2, = ax1.plot([],[],'k-',linewidth=10) #link 2     
+        line3, = ax1.plot([],[], marker = 'o', ms = 15, mfc = [0.7, 0.0, 1, 1], markeredgecolor = [0,0,0], mew = 5) #joint 2
+        line4, = ax1.plot([],[], marker = 'o', ms = 15, mfc = [0,0.75,1, 1], markeredgecolor = [0,0,0], mew = 5) #End Effector
+
+        theta_plot, = self.config_plot.plot([],[],marker = 'o', ms = 15, mfc = [0,0.75,1, 1], markeredgecolor = [0,0,0], mew = 5) # theta
+
+        self.line_ = [line1, line2, line3, line4, theta_plot]
+
         self.__animation_dMat = np.zeros((1, 4), dtype=np.float)
+        self.__theta = np.zeros((1,3), dtype=np.float)
 
     
     def cal_DH2Fk(self,JointIndex:int):
@@ -74,28 +86,33 @@ class Robot(object):
         self.extractTranslation()
         self.T_ = np.matrix(np.identity(4))
 
-    
+    def InvKin2(self, TargetLoc, clf = 0):
+        theta_ = np.zeros(self.theta_.shape)
+        theta_[0] = np.arctan2(TargetLoc[2], TargetLoc[0]);
+
+        COS_beta_num = self.DHparam_.r_[1]**2 - self.DHparam_.r_[2]**2 + TargetLoc[0]**2 + TargetLoc[1]**2 
+        COS_beta_den = 2 * self.DHparam_.r_[1] * np.sqrt(TargetLoc[0]**2 + TargetLoc[1]**2)
+
+        if clf == 0:
+                 theta_[1] = np.arctan2(TargetLoc[1], TargetLoc[0]) - np.arccos(COS_beta_num/COS_beta_den)
+        elif clf == 1:
+                 theta_[1] = np.arctan2(TargetLoc[1], TargetLoc[0]) + np.arccos(COS_beta_num/COS_beta_den)
+
+        COS_alpha_num = self.DHparam_.r_[1]**2 + self.DHparam_.r_[2]**2 - TargetLoc[0]**2 - TargetLoc[1]**2 
+        COS_alpha_den = 2 * self.DHparam_.r_[1] * self.DHparam_.r_[2]
+
+        if clf == 0:
+                 theta_[2] = np.pi - np.arccos(COS_alpha_num/COS_alpha_den)
+        elif clf == 1:
+                 theta_[2] = np.arccos(COS_alpha_num/COS_alpha_den) - np.pi
+
+        return theta_
+
     def InvKin(self,TargetLoc,clf=0):
         self.EETarget_ = TargetLoc
 
-        self.theta_[0] = np.arctan2(self.EETarget_[2], self.EETarget_[0]);
+        self.theta_ = self.InvKin2(TargetLoc,clf)
 
-        COS_beta_num = self.DHparam_.r_[1]**2 - self.DHparam_.r_[2]**2 + self.EETarget_[0]**2 + self.EETarget_[1]**2 
-        COS_beta_den = 2 * self.DHparam_.r_[1] * np.sqrt(self.EETarget_[0]**2 + self.EETarget_[1]**2)
-        
-        if clf == 0:
-                 self.theta_[1] = np.arctan2(self.EETarget_[1], self.EETarget_[0]) - np.arccos(COS_beta_num/COS_beta_den)
-        elif clf == 1:
-                 self.theta_[1] = np.arctan2(self.EETarget_[1], self.EETarget_[0]) + np.arccos(COS_beta_num/COS_beta_den)
-        
-        COS_alpha_num = self.DHparam_.r_[1]**2 + self.DHparam_.r_[2]**2 - self.EETarget_[0]**2 - self.EETarget_[1]**2 
-        COS_alpha_den = 2 * self.DHparam_.r_[1] * self.DHparam_.r_[2]
-        
-        if clf == 0:
-                 self.theta_[2] = np.pi - np.arccos(COS_alpha_num/COS_alpha_den)
-        elif clf == 1:
-                 self.theta_[2] = np.arccos(COS_alpha_num/COS_alpha_den) - np.pi
-        
         self.FwdKin(self.theta_)
 
 
@@ -131,7 +148,8 @@ class Robot(object):
         pass
     
     def Animation_Data_Generation(self):
-        self.__animation_dMat = np.zeros((len(self.trajectory_[0]), 4), dtype=np.float) 
+        self.__animation_dMat = np.zeros((len(self.trajectory_[0]), 4), dtype=np.float)
+        self.__theta = np.zeros((len(self.trajectory_[0]), len(self.DHparam_.theta_)), dtype=np.float) 
         
         for i in range(len(self.trajectory_[0])):
             self.InvKin([self.trajectory_[0][i], self.trajectory_[1][i], self.trajectory_[2][i]] ,self.defaultcfg)
@@ -139,6 +157,9 @@ class Robot(object):
             self.__animation_dMat[i][1] = self.DHparam_.r_[1]*np.sin(self.DHparam_.theta_[1])
             self.__animation_dMat[i][2] = self.EEPosition_[0]
             self.__animation_dMat[i][3] = self.EEPosition_[1]
+            self.__theta[i][0] = self.DHparam_.theta_[0]
+            self.__theta[i][1] = self.DHparam_.theta_[1]
+            self.__theta[i][2] = self.DHparam_.theta_[2]
 
     def InitAnimation(self):
        
@@ -147,39 +168,80 @@ class Robot(object):
         self.line_[1].set_data([self.__animation_dMat[0][0], self.__animation_dMat[0][2]], [self.__animation_dMat[0][1], self.__animation_dMat[0][3]])
         self.line_[2].set_data(self.__animation_dMat[0][0], self.__animation_dMat[0][1])
         self.line_[3].set_data(self.__animation_dMat[0][2], self.__animation_dMat[0][3])
+
+        self.line_[4].set_xdata(self.__theta[0][1])
+        self.line_[4].set_ydata(self.__theta[0][2])
+
+        self.config_plot.plot(self.__theta[0][1], self.__theta[0][2], label=r'Initial Position: $p_{(x, y)}$', marker = 'o', ms = 30, mfc = [0,0.5,1], markeredgecolor = [0,0,0], mew = 5)
+        self.config_plot.plot(self.__theta[len(self.trajectory_[0]) - 1][1], self.__theta[len(self.trajectory_[1]) - 1][2], label=r'Target Position: $p_{(x, y)}$', marker = 'o', ms = 30, mfc = [0,1,0], markeredgecolor = [0,0,0], mew = 5)
+
         
         return self.line_        
     def start_animation(self, i):
-
         self.line_[0].set_data([0.0, self.__animation_dMat[i][0]], [0.0, self.__animation_dMat[i][1]])
         self.line_[1].set_data([self.__animation_dMat[i][0], self.__animation_dMat[i][2]], [self.__animation_dMat[i][1], self.__animation_dMat[i][3]])
         self.line_[2].set_data(self.__animation_dMat[i][0], self.__animation_dMat[i][1])
         self.line_[3].set_data(self.__animation_dMat[i][2], self.__animation_dMat[i][3])
-
+  
+        self.line_[4].set_xdata(self.__theta[i][1])
+        self.line_[4].set_ydata(self.__theta[i][2])
         return self.line_
 
+
     
-    def display_environment(self, work_envelope = [False, 0]):
+    def display_environment(self, obstacles, work_envelope = [False, 0]):
         if len(self.trajectory_[0]) > 0:
             
-            plt.plot(self.trajectory_[0][0], self.trajectory_[1][0], label=r'Initial Position: $p_{(x, y)}$', marker = 'o', ms = 30, mfc = [0,0.5,1], markeredgecolor = [0,0,0], mew = 5)
-            plt.plot(self.trajectory_[0][len(self.trajectory_[0]) - 1], self.trajectory_[1][len(self.trajectory_[1]) - 1], label=r'Target Position: $p_{(x, y)}$', marker = 'o', ms = 30, mfc = [0,1,0], markeredgecolor = [0,0,0], mew = 5)
+            self.task_plot.plot(self.trajectory_[0][0], self.trajectory_[1][0], label=r'Initial Position: $p_{(x, y)}$', marker = 'o', ms = 30, mfc = [0,0.5,1], markeredgecolor = [0,0,0], mew = 5)
+            self.task_plot.plot(self.trajectory_[0][len(self.trajectory_[0]) - 1], self.trajectory_[1][len(self.trajectory_[1]) - 1], label=r'Target Position: $p_{(x, y)}$', marker = 'o', ms = 30, mfc = [0,1,0], markeredgecolor = [0,0,0], mew = 5)
 
             self.p = [self.trajectory_[0][len(self.trajectory_[0]) - 1], self.trajectory_[1][len(self.trajectory_[1]) - 1]]
             # self.InvKin(self.p,self.defaultcfg)
        
-    
-        plt.axis([(-1)*(self.DHparam_.r_[1] + self.DHparam_.r_[2]) - 0.2, (1)*(self.DHparam_.r_[1] + self.DHparam_.r_[2]) + 0.2, (-1)*(self.DHparam_.r_[1] + self.DHparam_.r_[2]) - 0.2, (1)*(self.DHparam_.r_[1] + self.DHparam_.r_[2]) + 0.2])
-        plt.grid()
-        plt.xlabel('x position [m]', fontsize = 20, fontweight ='normal')
-        plt.ylabel('y position [m]', fontsize = 20, fontweight ='normal')
-        plt.title(self.RobotName_, fontsize = 50, fontweight ='normal')
-        plt.legend(loc=0,fontsize=20)
+        x = []
+        y = []
+        t1 = []
+        t2 = []
+        for j in range(0, obstacles.shape[0]):
+            for i in range(0, obstacles.shape[1]):
+                if obstacles[i][j] > 0:
+                    x.append(i/100)
+                    y.append(j/100)
+                    thetas_elbow_up = self.InvKin2([i/100, j/100, 0.0], 1)
+                    thetas_elbow_down = self.InvKin2([i/100, j/100, 0.0], 0)
+                    t1.append(thetas_elbow_up[1])
+                    t2.append(thetas_elbow_up[2])
+                    t1.append(thetas_elbow_down[1])
+                    t2.append(thetas_elbow_down[2])
+
+        self.task_plot.scatter(x, y, marker = 'x', s = 30**2)
+        self.config_plot.scatter(t1,t2, marker = 'x', s = 30**2)
+        
+        self.task_plot.axis([(-1)*(self.DHparam_.r_[1] + self.DHparam_.r_[2]) - 0.2, (1)*(self.DHparam_.r_[1] + self.DHparam_.r_[2]) + 0.2, (-1)*(self.DHparam_.r_[1] + self.DHparam_.r_[2]) - 0.2, (1)*(self.DHparam_.r_[1] + self.DHparam_.r_[2]) + 0.2])
+        self.task_plot.grid()
+        #self.fig.scatter(obstacles[0, :], obstacles[1,:], marker='x')
+        self.task_plot.set_xlabel('x position [m]', fontsize = 20, fontweight ='normal')
+        self.task_plot.set_ylabel('y position [m]', fontsize = 20, fontweight ='normal')
+        self.task_plot.set_title(self.RobotName_, fontsize = 50, fontweight ='normal')
+        self.task_plot.legend(loc=0,fontsize=20)
+
+        self.config_plot.axis([self.JointLimits_[0][0], self.JointLimits_[0][1], self.JointLimits_[1][0], self.JointLimits_[1][1]])
+        self.config_plot.grid()
+        self.config_plot.set_xlabel('Theta 1 [rad]', fontsize = 20, fontweight ='normal')
+        self.config_plot.set_ylabel('Theta 2 [rad]', fontsize = 20, fontweight ='normal')
+        self.config_plot.set_title(self.RobotName_, fontsize = 50, fontweight ='normal')
+        
 
 
 def main():
+    obstacles = ObstacleField(int(55), int(55), 1, 0, 0, 0) 
+    obstacles.populate(10)
+    fig = plt.figure()
+    obstacles.print_map(fig,2,3, 1)
+    plt.show()
+
     JointLimits = [[-2.44346, 2.44346],[-2.61799, 2.61799]]
-    arm_length = [0.3, 0.25]
+    arm_length = [0.30, 0.25]
     
     inittheta = [0.0, 0.0, 0.0]
     r       = [0, arm_length[0], arm_length[1]]
@@ -199,9 +261,9 @@ def main():
         RRBOT.trajectory_[0].append(x[j])
         RRBOT.trajectory_[1].append(y[j])
         RRBOT.trajectory_[2].append(z[j])
-    RRBOT.display_environment([True, 1])
+    RRBOT.display_environment(obstacles.get_map(), [True, 1], )
     animator = animation.FuncAnimation(RRBOT.figure, RRBOT.start_animation, init_func=RRBOT.InitAnimation, frames=len(RRBOT.trajectory_[0]), interval=2, blit=True, repeat=False)
-    animator.save('test.mp4', fps=30, bitrate=1000)
+    animator.save('test.mp4', fps=30, bitrate=1000, dpi=100)
 
 
 if __name__=="__main__":

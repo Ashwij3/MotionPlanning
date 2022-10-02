@@ -23,10 +23,12 @@ class Robot(object):
         self.theta_ = np.zeros(DHparam.joints())
         self.defaultcfg = 0
         self.trajectory_ = [[], [], []]
-        
+        self.obstacle_map = [[]]
+
+
         self.figure, (ax1, ax2) = plt.subplots(2)
         self.figure.set_figheight(50)
-        self.figure.set_figwidth(35)
+        self.figure.set_figwidth(35)    
         self.figure.set_dpi(100)
 
         self.task_plot = ax1
@@ -116,7 +118,7 @@ class Robot(object):
         self.FwdKin(self.theta_)
 
 
-    def TrajectoryGen(self,start,Target,TrajectoryType ='linear', steps = 25):
+    def TrajectoryGen(self,start,Target,TrajectoryType ='linear', steps = 25, obstacles = []):
         if TrajectoryType == 'joint':
             x = []
             y = []
@@ -152,7 +154,7 @@ class Robot(object):
         self.__theta = np.zeros((len(self.trajectory_[0]), len(self.DHparam_.theta_)), dtype=np.float) 
         
         for i in range(len(self.trajectory_[0])):
-            self.InvKin([self.trajectory_[0][i], self.trajectory_[1][i], self.trajectory_[2][i]] ,self.defaultcfg)
+            self.InvKin([self.trajectory_[0][i], self.trajectory_[1][i], self.trajectory_[2][i]] , self.defaultcfg)
             self.__animation_dMat[i][0] = self.DHparam_.r_[1]*np.cos(self.DHparam_.theta_[1])
             self.__animation_dMat[i][1] = self.DHparam_.r_[1]*np.sin(self.DHparam_.theta_[1])
             self.__animation_dMat[i][2] = self.EEPosition_[0]
@@ -162,7 +164,6 @@ class Robot(object):
             self.__theta[i][2] = self.DHparam_.theta_[2]
 
     def InitAnimation(self):
-       
         self.Animation_Data_Generation()
         self.line_[0].set_data([0.0, self.__animation_dMat[0][0]], [0.0, self.__animation_dMat[0][1]])
         self.line_[1].set_data([self.__animation_dMat[0][0], self.__animation_dMat[0][2]], [self.__animation_dMat[0][1], self.__animation_dMat[0][3]])
@@ -175,7 +176,24 @@ class Robot(object):
         self.config_plot.plot(self.__theta[0][1], self.__theta[0][2], label=r'Initial Position: $p_{(x, y)}$', marker = 'o', ms = 30, mfc = [0,0.5,1], markeredgecolor = [0,0,0], mew = 5)
         self.config_plot.plot(self.__theta[len(self.trajectory_[0]) - 1][1], self.__theta[len(self.trajectory_[1]) - 1][2], label=r'Target Position: $p_{(x, y)}$', marker = 'o', ms = 30, mfc = [0,1,0], markeredgecolor = [0,0,0], mew = 5)
 
-        
+        link1x=np.linspace(0.0, self.__animation_dMat[0][0], 10)
+        link1y=np.linspace(0.0, self.__animation_dMat[0][1], 10)
+
+        link2x=np.linspace(self.__animation_dMat[0][0], self.__animation_dMat[0][2], 10)
+        link2y=np.linspace(self.__animation_dMat[0][1], self.__animation_dMat[0][3], 10)
+        t1 = []
+        t2 = []
+        for m in range(0, len(link1x)):
+            links = self.InvKin2([link1x[m], link1y[m], 0.0], self.defaultcfg)
+            t1.append(links[1])
+            t2.append(links[2])
+        for m in range(0, len(link2x)):
+            thetas_elbow_up = self.InvKin2([link2x[m], link2y[m], 0.0], self.defaultcfg)
+            t1.append(links[1])
+            t2.append(links[2])
+
+        self.dynamic_ob_plot, = self.config_plot.plot(t1,t2, 's', marker = 'x', ms = 30)
+
         return self.line_        
     def start_animation(self, i):
         self.line_[0].set_data([0.0, self.__animation_dMat[i][0]], [0.0, self.__animation_dMat[i][1]])
@@ -185,6 +203,26 @@ class Robot(object):
   
         self.line_[4].set_xdata(self.__theta[i][1])
         self.line_[4].set_ydata(self.__theta[i][2])
+
+        link1x=np.linspace(0.0, self.__animation_dMat[i][0], 10)
+        link1y=np.linspace(0.0, self.__animation_dMat[i][1], 10)
+
+        link2x=np.linspace(self.__animation_dMat[i][0], self.__animation_dMat[i][2], 10)
+        link2y=np.linspace(self.__animation_dMat[i][1], self.__animation_dMat[i][3], 10)
+        t1 = []
+        t2 = []
+        t1.extend(self.static_t1)
+        t2.extend(self.static_t2)
+        for m in range(0, len(link1x)):
+            link1 = self.InvKin2([link1x[m], link1y[m], 0.0], self.defaultcfg)
+            t1.append(link1[1])
+            t2.append(link1[2])
+        for m in range(0, len(link2x)):
+            link2 = self.InvKin2([link2x[m], link2y[m], 0.0], self.defaultcfg)
+            t1.append(link2[1])
+            t2.append(link2[2])
+
+        self.dynamic_ob_plot.set_data(t1,t2)
         return self.line_
 
 
@@ -198,6 +236,7 @@ class Robot(object):
             self.p = [self.trajectory_[0][len(self.trajectory_[0]) - 1], self.trajectory_[1][len(self.trajectory_[1]) - 1]]
             # self.InvKin(self.p,self.defaultcfg)
        
+        # Get all of the static obstacles and plot them 
         x = []
         y = []
         t1 = []
@@ -214,8 +253,13 @@ class Robot(object):
                     t1.append(thetas_elbow_down[1])
                     t2.append(thetas_elbow_down[2])
 
-        self.task_plot.scatter(x, y, marker = 'x', s = 30**2)
-        self.config_plot.scatter(t1,t2, marker = 'x', s = 30**2)
+        self.static_x = x
+        self.static_y = y
+        self.static_t1 = t1
+        self.static_t2 = t2
+
+        self.task_plot.plot(x, y, 's',marker = 'x', ms = 30)
+        self.config_plot.plot(t1,t2,'s', marker = 'x', ms = 30)
         
         self.task_plot.axis([(-1)*(self.DHparam_.r_[1] + self.DHparam_.r_[2]) - 0.2, (1)*(self.DHparam_.r_[1] + self.DHparam_.r_[2]) + 0.2, (-1)*(self.DHparam_.r_[1] + self.DHparam_.r_[2]) - 0.2, (1)*(self.DHparam_.r_[1] + self.DHparam_.r_[2]) + 0.2])
         self.task_plot.grid()
@@ -234,11 +278,8 @@ class Robot(object):
 
 
 def main():
-    obstacles = ObstacleField(int(55), int(55), 1, 0, 0, 0) 
-    obstacles.populate(10)
-    fig = plt.figure()
-    obstacles.print_map(fig,2,3, 1)
-    plt.show()
+    obstacles = ObstacleField(int(55), int(55), 1, 0, 0, 0) # robot is centered at 0,0 which is len/2 +1, len/2 +1 
+
 
     JointLimits = [[-2.44346, 2.44346],[-2.61799, 2.61799]]
     arm_length = [0.30, 0.25]
@@ -256,7 +297,7 @@ def main():
     TargetPoint = [0.10, 0.30, 0.0]
     steps = 25
 
-    x,y, z = RRBOT.TrajectoryGen(StartPoint,TargetPoint,TrajectoryType,steps)
+    x,y, z = RRBOT.TrajectoryGen(StartPoint,TargetPoint,TrajectoryType,steps, obstacles)
     for j in range(steps):
         RRBOT.trajectory_[0].append(x[j])
         RRBOT.trajectory_[1].append(y[j])

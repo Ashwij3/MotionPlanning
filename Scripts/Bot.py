@@ -14,7 +14,7 @@ class DHParam(object):
         return len(self.theta_)
 
 class Robot(object):
-    def __init__(self,RobotName:str, DHparam:DHParam, JointLimits):
+    def __init__(self,RobotName:str, DHparam:DHParam, JointLimits, ObstacleMap):
         self.RobotName_ = RobotName
         self.DHparam_ = DHparam
         self.JointLimits_ = JointLimits 
@@ -23,7 +23,8 @@ class Robot(object):
         self.theta_ = np.zeros(DHparam.joints())
         self.defaultcfg = 0
         self.trajectory_ = [[], [], []]
-        self.obstacle_map = [[]]
+        self.task_space_obstacles = ObstacleMap
+        self.config_space_obstacles = np.zeros((360,360))
 
 
         self.figure, (ax1, ax2) = plt.subplots(2)
@@ -46,7 +47,6 @@ class Robot(object):
 
         self.__animation_dMat = np.zeros((1, 4), dtype=np.float)
         self.__theta = np.zeros((1,3), dtype=np.float)
-
     
     def cal_DH2Fk(self,JointIndex:int):
         Ti = np.matrix(np.identity(4))
@@ -176,23 +176,6 @@ class Robot(object):
         self.config_plot.plot(self.__theta[0][1], self.__theta[0][2], label=r'Initial Position: $p_{(x, y)}$', marker = 'o', ms = 30, mfc = [0,0.5,1], markeredgecolor = [0,0,0], mew = 5)
         self.config_plot.plot(self.__theta[len(self.trajectory_[0]) - 1][1], self.__theta[len(self.trajectory_[1]) - 1][2], label=r'Target Position: $p_{(x, y)}$', marker = 'o', ms = 30, mfc = [0,1,0], markeredgecolor = [0,0,0], mew = 5)
 
-        link1x=np.linspace(0.0, self.__animation_dMat[0][0], 10)
-        link1y=np.linspace(0.0, self.__animation_dMat[0][1], 10)
-
-        link2x=np.linspace(self.__animation_dMat[0][0], self.__animation_dMat[0][2], 10)
-        link2y=np.linspace(self.__animation_dMat[0][1], self.__animation_dMat[0][3], 10)
-        t1 = []
-        t2 = []
-        for m in range(0, len(link1x)):
-            links = self.InvKin2([link1x[m], link1y[m], 0.0], self.defaultcfg)
-            t1.append(links[1])
-            t2.append(links[2])
-        for m in range(0, len(link2x)):
-            thetas_elbow_up = self.InvKin2([link2x[m], link2y[m], 0.0], self.defaultcfg)
-            t1.append(links[1])
-            t2.append(links[2])
-
-        self.dynamic_ob_plot, = self.config_plot.plot(t1,t2, 's', marker = 'x', ms = 30)
 
         return self.line_        
     def start_animation(self, i):
@@ -204,25 +187,6 @@ class Robot(object):
         self.line_[4].set_xdata(self.__theta[i][1])
         self.line_[4].set_ydata(self.__theta[i][2])
 
-        link1x=np.linspace(0.0, self.__animation_dMat[i][0], 10)
-        link1y=np.linspace(0.0, self.__animation_dMat[i][1], 10)
-
-        link2x=np.linspace(self.__animation_dMat[i][0], self.__animation_dMat[i][2], 10)
-        link2y=np.linspace(self.__animation_dMat[i][1], self.__animation_dMat[i][3], 10)
-        t1 = []
-        t2 = []
-        t1.extend(self.static_t1)
-        t2.extend(self.static_t2)
-        for m in range(0, len(link1x)):
-            link1 = self.InvKin2([link1x[m], link1y[m], 0.0], self.defaultcfg)
-            t1.append(link1[1])
-            t2.append(link1[2])
-        for m in range(0, len(link2x)):
-            link2 = self.InvKin2([link2x[m], link2y[m], 0.0], self.defaultcfg)
-            t1.append(link2[1])
-            t2.append(link2[2])
-
-        self.dynamic_ob_plot.set_data(t1,t2)
         return self.line_
 
 
@@ -237,33 +201,61 @@ class Robot(object):
             # self.InvKin(self.p,self.defaultcfg)
        
         # Get all of the static obstacles and plot them 
-        x = []
-        y = []
+        ob_x = []
+        ob_y = []
         t1 = []
         t2 = []
-        for j in range(0, obstacles.shape[0]):
-            for i in range(0, obstacles.shape[1]):
+        # add obstacles to task space plot 
+        for j in range(0, obstacles.shape[1]):
+            for i in range(0, obstacles.shape[0]):
                 if obstacles[i][j] > 0:
-                    x.append(i/100)
-                    y.append(j/100)
-                    thetas_elbow_up = self.InvKin2([i/100, j/100, 0.0], 1)
-                    thetas_elbow_down = self.InvKin2([i/100, j/100, 0.0], 0)
-                    t1.append(thetas_elbow_up[1])
-                    t2.append(thetas_elbow_up[2])
-                    t1.append(thetas_elbow_down[1])
-                    t2.append(thetas_elbow_down[2])
+                    ob_x.append(i/100)
+                    ob_y.append(j/100)
 
-        self.static_x = x
-        self.static_y = y
+        # for every point in configuration space
+        for j in range(0, 360):
+            for i in range(0, 360):
+                # find link/ee positions
+                self.FwdKin([0, np.radians(i), np.radians(j)])
+                joint_2_pose_x = self.DHparam_.r_[1]*np.cos(self.DHparam_.theta_[1])
+                joint_2_pose_y = self.DHparam_.r_[1]*np.sin(self.DHparam_.theta_[1])
+                link1x=np.linspace(0.0, joint_2_pose_x, 10)
+                link1y=np.linspace(0.0, joint_2_pose_y, 10)
+
+                link2x=np.linspace(joint_2_pose_x, self.EEPosition_[0], 10)
+                link2y=np.linspace(joint_2_pose_y, self.EEPosition_[1], 10)
+
+                # if any reference point in the links is an obstacle in task space
+                # then this is an obstacle in config space 
+                #print(i, j, joint_2_pose_x, joint_2_pose_y, link1x, link1y)
+                for k in range(0, len(link1x)):
+                    x,y = int(link1x[k]*100) , int(link1y[k]*100)
+                    if obstacles[x][y] > 0:
+                        self.config_space_obstacles[i][j] = 1
+                        t1.append(i)
+                        t2.append(j)
+                        break; 
+                for k in range(0, len(link2x)):
+                    x,y = int(link2x[k]*100) , int(link2y[k]*100)
+                    if obstacles[x][y] > 0:
+                        self.config_space_obstacles[i][j] = 1
+                        t1.append(i)
+                        t2.append(j)
+                        break; 
+
+        self.static_x = ob_x
+        self.static_y = ob_y
         self.static_t1 = t1
         self.static_t2 = t2
 
-        self.task_plot.plot(x, y, 's',marker = 'x', ms = 30)
-        self.config_plot.plot(t1,t2,'s', marker = 'x', ms = 30)
+        #print(len(ob_x),len(ob_y))
+
+        self.task_plot.plot(ob_x, ob_y, 's', marker = 'x', ms = 10, mfc = [0,0,0], markeredgecolor = [0,0,0], mew = 5)
+        self.config_plot.plot(t1,t2,'s', marker = 'x', ms = 10, mfc = [0,0,0], markeredgecolor = [0,0,0], mew = 5)
         
         self.task_plot.axis([(-1)*(self.DHparam_.r_[1] + self.DHparam_.r_[2]) - 0.2, (1)*(self.DHparam_.r_[1] + self.DHparam_.r_[2]) + 0.2, (-1)*(self.DHparam_.r_[1] + self.DHparam_.r_[2]) - 0.2, (1)*(self.DHparam_.r_[1] + self.DHparam_.r_[2]) + 0.2])
         self.task_plot.grid()
-        #self.fig.scatter(obstacles[0, :], obstacles[1,:], marker='x')
+        
         self.task_plot.set_xlabel('x position [m]', fontsize = 20, fontweight ='normal')
         self.task_plot.set_ylabel('y position [m]', fontsize = 20, fontweight ='normal')
         self.task_plot.set_title(self.RobotName_, fontsize = 50, fontweight ='normal')
@@ -278,10 +270,13 @@ class Robot(object):
 
 
 def main():
-    obstacles = ObstacleField(int(55), int(55), 1, 0, 0, 0) # robot is centered at 0,0 which is len/2 +1, len/2 +1 
+    obstacles = ObstacleField(int(56*2), int(56*2), 1, 0, 0, 0) # robot is centered at 0,0 which is len/2 +1, len/2 +1 
+    obstacles.populate(1)
+    #fig = plt.figure()
+    #obstacles.print_map(fig,2,3, 1)
+    #plt.show()
 
-
-    JointLimits = [[-2.44346, 2.44346],[-2.61799, 2.61799]]
+    JointLimits = [[0, 360],[0, 360]]
     arm_length = [0.30, 0.25]
     
     inittheta = [0.0, 0.0, 0.0]
@@ -289,7 +284,7 @@ def main():
     d       = [0.0, 0.0, 0.0]
     alpha   = [0.0, 0.0, 0.0]
 
-    RRBOT = Robot("RRRobot",DHParam(inittheta,r,d,alpha),JointLimits)
+    RRBOT = Robot("RRRobot",DHParam(inittheta,r,d,alpha),JointLimits, obstacles)
 
     RRBOT.defaultcfg = 1 # 0/1 for changing the configuration to reach a particular point
     TrajectoryType = "linear"
@@ -297,7 +292,7 @@ def main():
     TargetPoint = [0.10, 0.30, 0.0]
     steps = 25
 
-    x,y, z = RRBOT.TrajectoryGen(StartPoint,TargetPoint,TrajectoryType,steps, obstacles)
+    x,y, z = RRBOT.TrajectoryGen(StartPoint,TargetPoint,TrajectoryType,steps, obstacles.get_map())
     for j in range(steps):
         RRBOT.trajectory_[0].append(x[j])
         RRBOT.trajectory_[1].append(y[j])
@@ -305,6 +300,7 @@ def main():
     RRBOT.display_environment(obstacles.get_map(), [True, 1], )
     animator = animation.FuncAnimation(RRBOT.figure, RRBOT.start_animation, init_func=RRBOT.InitAnimation, frames=len(RRBOT.trajectory_[0]), interval=2, blit=True, repeat=False)
     animator.save('test.mp4', fps=30, bitrate=1000, dpi=100)
+
 
 
 if __name__=="__main__":

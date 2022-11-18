@@ -13,14 +13,18 @@ class ObstacleField:
 		self.x=x
 		self.y=y
 		self.z=z 
+		self.obstacle_map_list = []
 		self.obstacle_map=np.zeros((self.x,self.y, self.z))
 
 	def get_map(self):
 		return self.obstacle_map
 
+	def get_list(self):
+		return self.obstacle_map_list
+
     # populates the map the given percent of map spaces with an obstacle 
 	def populate(self, percent):
-		spots_to_fill = int(((self.x * self.y * self.z) * (percent/100)))
+		spots_to_fill = int(((self.x * self.y) * (percent/100)))
  
 		spots_filled = self.get_spots_filled()
 		# While the percentage of the map filled is less than the requested amount
@@ -43,8 +47,11 @@ class ObstacleField:
 		z_place =  random.randint(0, self.z-1) if self.z > 1  else  0
 
 		# don't allow the goal to be an obstacle 
-		if x_place == self.goal_x and y_place == self.goal_y and z_place == self.goal_z:
+		if x_place == self.goal_x and y_place == self.goal_y:
 			return 
+
+
+		self.obstacle_map_list.append((x_place, y_place))
 
 		theta = random.randint(0,3) # 0=0 1=90 2=180 3=270
 		mirror = random.randint(0,1) 
@@ -93,13 +100,13 @@ class ObstacleField:
 			elif theta == 2:
 				for i in range(0,3):
 					if x_place - i >= 0:
-						self.obstacle_map[x_place - i][y_place][z_place] = 1
+						self.obstacle_map[x_place - i][y_place] = 1
 				if  0 <= y_place + (1 * mirror) < self.y:
 						self.obstacle_map[x_place][y_place + (1*mirror)][z_place] = 1
 			elif theta == 3:
 				for i in range(0,3):
 					if y_place + i < self.y:
-						self.obstacle_map[x_place][y_place + i][z_place] = 1
+						self.obstacle_map[x_place][y_place + i] = 1
 				if 0 <= x_place + (1 * mirror) < self.x:
 					self.obstacle_map[x_place + (1*mirror)][y_place][z_place] = 1
 			else:
@@ -136,12 +143,12 @@ class ObstacleField:
 			elif theta == 3:
 				for i in range(0,2):
 					if y_place + i < self.y:
-						self.obstacle_map[x_place][y_place + i][z_place] = 1
+						self.obstacle_map[x_place][y_place + i][z_place]= 1
 				x_place=x_place+1
 				y_place=y_place+1
 				for i in range(0,2):
 					if 0 <=  y_place + i < self.y and 0 <= x_place < self.x:
-						self.obstacle_map[x_place][y_place + i][z_place] = 1
+						self.obstacle_map[x_place][y_place + i][z_place]= 1
 			else:
 				pritn("invalid theta")
 		# T shape 
@@ -151,7 +158,7 @@ class ObstacleField:
 					if x_place + i < self.x:
 						self.obstacle_map[x_place + i][y_place][z_place] = 1
 				if  0 <= y_place + (1 * mirror) < self.y and  0 <= x_place + 1 < self.x:
-						self.obstacle_map[x_place + 1][y_place + (1*mirror)] = 1
+						self.obstacle_map[x_place + 1][y_place + (1*mirror)][z_place] = 1
 			elif theta == 1:
 				for i in range(0,3):
 					if y_place - i >= 0:
@@ -163,7 +170,7 @@ class ObstacleField:
 					if x_place - i >= 0:
 						self.obstacle_map[x_place - i][y_place][z_place] = 1
 				if  0 <= y_place + (1 * mirror) < self.y and  0 <= x_place - 1  < self.x:
-						self.obstacle_map[x_place - 1][y_place + (1*mirror)][z_place] = 1
+						self.obstacle_map[x_place - 1][y_place + (1*mirror)][z_place]= 1
 			elif theta == 3:
 				for i in range(0,3):
 					if y_place + i < self.y:

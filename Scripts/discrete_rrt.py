@@ -65,13 +65,15 @@ class RRT:
             nearest_node = self.get_nearNodeIdx(rnd_node)
 
             new_node =  self.steer(nearest_node, rnd_node, self.step)
-            if self.check_collision(new_node):
-                self.node_list.append(new_node)
+            if self.check_if_outside_play_area(new_node):
+                if self.check_collision(new_node):
+                    self.node_list.append(new_node)
             
             if self.calc_dist_to_goal(self.node_list[-1]) <= self.step:
                 final_node = self.steer(self.node_list[-1], self.goal)
-                if self.check_collision(final_node):
-                    return self.generate_final_course(len(self.node_list) - 1) 
+                if self.check_if_outside_play_area(new_node):
+                    if self.check_collision(new_node):
+                        return self.generate_final_course(len(self.node_list) - 1) 
     
     def get_rndNode(self):
         if np.random.randint(0, 100) > self.goal_sample_rate:
@@ -186,12 +188,12 @@ class RRT:
         else:
             return True
 
-    def check_if_outside_play_area(node):
+    def check_if_outside_play_area(self,node:Node):
 
-        if node.x < 0 or node.x > play_area.xmax or \
-           node.y < 0 or node.y > play_area.ymax or \
-           node.y < 0 or node.y > play_area.ymax or \
-           node.y < 0 or node.y > play_area.ymax:
+        if node.q1 < 0 or node.q1 > (self.map.q1_maxlimit - self.map.q1_minlimit) or \
+           node.q2 < 0 or node.q2 > (self.map.q2_maxlimit - self.map.q2_minlimit) or \
+           node.q3 < 0 or node.q3 > (self.map.q3_maxlimit - self.map.q3_minlimit) or \
+           node.q4 < 0 or node.q4 > (self.map.q4_maxlimit - self.map.q4_minlimit):
 
             return False  # outside - bad
         else:

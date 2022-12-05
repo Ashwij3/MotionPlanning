@@ -141,6 +141,7 @@ class Robot(object):
         self.FwdKin(self.theta_)
 
     def check_collision_at_pose(self, thetas):
+        #print(thetas)
         self.DHparam_.theta_ = [np.radians(thetas[0]), np.radians(thetas[1]), (10 + thetas[2])/100, np.radians(thetas[3])]
         for m in range(len(self.DHparam_.theta_)-1):
             if self.DHparam_.types[m] == JointType.PRISMATIC:
@@ -155,15 +156,15 @@ class Robot(object):
         link_1_R = self.T_[0:3,0:3]
         self.T_ = np.matrix(np.identity(4))
 
-        self.FwdKin([np.radians(i), np.radians(j), (10 + k)/100, np.radians(l)])
+        self.FwdKin([np.radians(thetas[0]), np.radians(thetas[1]), (10 + thetas[2])/100, np.radians(thetas[3])])
         link_2_R = self.T_[0:3,0:3]
-        link_1_co.setRotation(link_1_R)
-        link_2_co.setTranslation(J1Pose)
-        link_2_co.setRotation(link_2_R)
+        self.link_1_co.setRotation(link_1_R)
+        self.link_2_co.setTranslation(J1Pose)
+        self.link_2_co.setRotation(link_2_R)
         req = fcl.CollisionRequest(num_max_contacts = 100, enable_contact =True)
         collisions  = fcl.CollisionData(request = req)
         
-        arm_manager.collide(obstacle_manager, collisions, fcl.defaultCollisionCallback)
+        self.arm_manager.collide(self.obstacle_manager, collisions, fcl.defaultCollisionCallback)
         if collisions.result.contacts:
             return True
         else:

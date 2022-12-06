@@ -110,28 +110,27 @@ class Robot(object):
         self.T_ = np.matrix(np.identity(4))
 
     def InvKin2(self, TargetLoc, clf = 0):
-        print(TargetLoc)
-        theta_ = np.zeros(self.theta_.shape)
-        theta_[0] = np.arctan2(TargetLoc[2], TargetLoc[0]);
-
-        COS_beta_num = round(self.DHparam_.r_[1]**2 - self.DHparam_.r_[2]**2 + TargetLoc[0]**2 + TargetLoc[1]**2, 4) 
-        COS_beta_den = round(2 * self.DHparam_.r_[1] * np.sqrt(TargetLoc[0]**2 + TargetLoc[1]**2),4)
         
+        theta_ = np.zeros(self.theta_.shape)
+        theta_[0] = np.arctan2(TargetLoc[1], TargetLoc[0])
 
-        if clf == 0:
-                 theta_[1] = np.arctan2(TargetLoc[1], TargetLoc[0]) - np.arccos(COS_beta_num/COS_beta_den)
-        elif clf == 1:
-                 theta_[1] = np.arctan2(TargetLoc[1], TargetLoc[0]) + np.arccos(COS_beta_num/COS_beta_den)
+        rot = np.matrix([[np.cos(-theta_[0]), -np.sin(-theta_[0]), 0],[np.sin(-theta_[0]), np.cos(-theta_[0]), 0],[0,0,1]])
+        print(rot)
+        rotated_ee = np.transpose(TargetLoc*np.transpose(rot))
+        print("ee", TargetLoc, "rot_ee", rotated_ee)
+        rho =  0 if rotated_ee[0] >= 0 else math.pi
+        if not rotated_ee[0] == 0:
+            link_3_pos = [rotated_ee[0] - self.DHparam_.r_[3]*np.cos(rho), 0, rotated_ee[2] - self.DHparam_.r_[3]*np.sin(rho)]
+        else:
+            link_3_pos = [rotated_ee[0] - self.DHparam_.r_[3]*np.sin(rho), 0, rotated_ee[2] - self.DHparam_.r_[3]*np.cos(rho)]
+        print("l3", link_3_pos)
+        theta_[2] = math.sqrt(link_3_pos[0]**2 + link_3_pos[2]**2 ) -  self.DHparam_.r_[1]
 
-        COS_alpha_num = round(self.DHparam_.r_[1]**2 + self.DHparam_.r_[2]**2 - TargetLoc[0]**2 - TargetLoc[1]**2, 4)
-        COS_alpha_den = round(2 * self.DHparam_.r_[1] * self.DHparam_.r_[2], 4)
+        theta_[1] = np.arctan2(link_3_pos[2], link_3_pos[0])
 
-        if clf == 0:
-                 theta_[2] = np.pi - np.arccos(COS_alpha_num/COS_alpha_den)
-        elif clf == 1:
-                 theta_[2] = np.arccos(COS_alpha_num/COS_alpha_den) - np.pi
-      
-        return theta_
+        theta_[3] = rho  - theta_[1] if not rotated_ee[0]==0 else theta_[1] - rho - math.pi/2
+        print(TargetLoc, theta_)
+        return [np.degrees(theta_[0]), np.degrees(theta_[1]), theta_[2], np.degrees(theta_[3])]
 
     def InvKin(self,TargetLoc,clf=0):
         self.EETarget_ = TargetLoc
@@ -169,6 +168,100 @@ class Robot(object):
             return True
         else:
             return False
+
+    def update(self, i, data):
+        thetas = data[i]
+        self.FwdKin([np.radians(thetas[0]), np.radians(thetas[1]), (.1 + thetas[2]/100), np.radians(thetas[3])])
+        jp = np.zeros((4,3), dtype=np.float64)
+        for i in range(len(self.DHparam_.theta_)):
+            t = self.cal_DH2Fk(i)
+            self.T_ =  self.T_ * t
+            if i > 0:
+                jp[i-1][0] = float(self.T_[0, 3])
+                jp[i-1][1] = float(self.T_[1, 3])
+                jp[i-1][2] = float(self.T_[2, 3])
+
+        self.line1.set_data_3d([0.0, jp[0][0]], [0.0, jp[0][1]], [0.0, jp[0][2]])
+        self.line2.set_data_3d([jp[0][0], jp[1][0]], [jp[0][1], jp[1][1]],[jp[0][2], jp[1][2]])
+        self.line3.set_data_3d([jp[1][0], jp[2][0]], [jp[1][1], jp[2][1]],[jp[1][2], jp[2][2]])
+
+        self.line4.set_data_3d(jp[0][0], jp[0][1],jp[0][2])
+        self.line5.set_data_3d(jp[1][0], jp[1][1],jp[1][2])
+        self.line6.set_data_3d(jp[2][0], jp[2][1],jp[2][2])
+
+        self.theta_plot.set_data_3d(thetas[0], thetas[1], thetas[3])
+        
+        return [self.line1,self. line2, self.line3, self.line4, self.line5, self.line6, self.theta_plot]
+
+    def plot_configuration(self, thetas):
+
+        print("theta", thetas)
+        self.FwdKin([np.radians(thetas[0]), np.radians(thetas[1]), (.1 + thetas[2]), np.radians(thetas[3])])
+        self.figure = plt.figure()
+        ax1 = self.figure.add_subplot(1,2,1,projection='3d')
+        ax2 = self.figure.add_subplot(1,2,2,projection='3d')
+        self.figure.set_figheight(50)
+        self.figure.set_figwidth(35)    
+        self.figure.set_dpi(100)
+
+        self.task_plot = ax1
+        self.config_plot = ax2
+
+        self.task_plot.plot(0.0, 0.0,0.0, marker = 'o', ms = 25, mfc = [0,0,0], markeredgecolor = [0,0,0], mew = 5) #joint 1
+        self.line1, = ax1.plot([],[],[],'k-',linewidth=10) #link 1
+        self.line2, = ax1.plot([],[],[],'k-',linewidth=10) #link 2
+        self.line3, = ax1.plot([],[],[],'k-',linewidth=10) #link 3
+
+        self.line4, = ax1.plot([],[],[], marker = 'o', ms = 15, mfc = [0.7, 0.0, 1, 1], markeredgecolor = [0,0,0], mew = 5) #joint 2
+        self.line5, = ax1.plot([],[],[], marker = 'o', ms = 15, mfc = [0.0, 1, 0.75, 1], markeredgecolor = [0,0,0], mew = 5) #joint 3
+        self.line6, = ax1.plot([],[],[], marker = 'o', ms = 15, mfc = [0,0.75,1, 1], markeredgecolor = [0,0,0], mew = 5) #End Effector
+
+        ax1.axes.set_xlim3d(left=-0.60, right=0.75) 
+        ax1.axes.set_ylim3d(bottom=-0.6, top=0.75) 
+        ax1.axes.set_zlim3d(bottom=-0.6, top=0.75) 
+
+        ax2.axes.set_xlim3d(left=0, right=360) 
+        ax2.axes.set_ylim3d(bottom=0, top=360) 
+        ax2.axes.set_zlim3d(bottom=0, top=360) 
+
+        self.theta_plot, = self.config_plot.plot([],[],marker = 'o', ms = 15, mfc = [0,0.75,1, 1], markeredgecolor = [0,0,0], mew = 5) # theta
+
+        ob_x =[]
+        ob_y = []
+        ob_z = []
+        x,y,z = self.task_space_obstacles.shape
+        for k in range(0, z):
+            for j in range(0,y):
+                for i in range(0,x):
+                    if self.task_space_obstacles[i][j][k] > 0:
+                        ob_x.append((i-(x/2))/100)
+                        ob_y.append((j-(y/2))/100)
+                        ob_z.append((k-(z/2))/100)
+        print("obs", len(ob_x))
+        self.task_plot.scatter(ob_x, ob_y, ob_z,  marker="s",)
+
+        jp = np.zeros((4,3), dtype=np.float64)
+        for i in range(len(self.DHparam_.theta_)):
+            t = self.cal_DH2Fk(i)
+            self.T_ =  self.T_ * t
+            if i > 0:
+                jp[i-1][0] = float(self.T_[0, 3])
+                jp[i-1][1] = float(self.T_[1, 3])
+                jp[i-1][2] = float(self.T_[2, 3])
+        
+        print(jp)
+        print(self.EEPosition_)
+
+        self.line1.set_data_3d([0.0, jp[0][0]], [0.0, jp[0][1]], [0.0, jp[0][2]])
+        self.line2.set_data_3d([jp[0][0], jp[1][0]], [jp[0][1], jp[1][1]],[jp[0][2], jp[1][2]])
+        self.line3.set_data_3d([jp[1][0], jp[2][0]], [jp[1][1], jp[2][1]],[jp[1][2], jp[2][2]])
+        
+        self.line4.set_data_3d(jp[0][0], jp[0][1],jp[0][2])
+        self.line5.set_data_3d(jp[1][0], jp[1][1],jp[1][2])
+        self.line6.set_data_3d(jp[2][0], jp[2][1],jp[2][2])
+
+        #self.__theta[0] = thetas
+        self.theta_plot.set_data_3d(thetas[0], thetas[1], thetas[3])
 
 def main():
     obstacles = ObstacleField(int(76*2), int(76*2), int(76*2), 0, 0, 0) # robot is centered at 0,0 which is len/2 +1, len/2 +1 
